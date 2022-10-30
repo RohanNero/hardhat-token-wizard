@@ -11,9 +11,9 @@ Users may deploy a **TokenWizard** `contract` by passing all the contract parame
  - **`address borrower`:** address of the user borrowing liquidity by using their physical object as collateral  
  - **`address lender`:** address of the user lending their liqudity. *(receives interest if applicable)* 
  - **`FinancialTerms`** *(struct of uints representing the financial terms of the contract):* 
-    - **`uint32 borrowAmount`:** amount of liquidity being borrowed/lent 
-    - **`uint8 interestRate`:** interest rate on the borrowed liquidty
-    - **`uint32 interestCompoundingInterval`:** interest compounding time
+    - **`uint32`**` borrowAmount`: amount of liquidity being borrowed/lent 
+    - **`uint8`**` interestRate`: interest rate on the borrowed liquidty
+    - **`uint32`**` interestCompoundingInterval`: interest compounding time
     - **`uint32 dueDate`:** unix timestamp that represents when liquidity is due
     - **`uint8 lateFeePerecent`:** percentage used to caluclate how much is charged if a payment is late
     - **`uint32 lateFeeCompoundingInterval`:** late fee compounding interval *(in seconds)*
