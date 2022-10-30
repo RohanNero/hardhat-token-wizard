@@ -1,8 +1,8 @@
 # **Tokenization Wizard**
 
-#### I wanted to create a platform/method where **any** user could poentially borrow any amount of liquidity *(currently capped at 2^32)* by using a physical object they own as collateral.
-#### At the same time any user can become a lender and lend to any user they choose to, with a list of customizable contract **`financialTerms`**. 
-#### **The goal of this project is to create the foundation of that, in such a way that anyone may build on top of it to better fit their desired needs.**
+I wanted to create a platform/method where **any** user could poentially borrow any amount of liquidity *(currently capped at 2^32)* by using a physical object they own as collateral.
+At the same time any user can become a lender and lend to any user they choose to, with a list of customizable contract **`financialTerms`**. 
+**The goal of this project is to create the foundation of that, in such a way that anyone may build on top of it to better fit their desired needs.**
 
 ---
 
