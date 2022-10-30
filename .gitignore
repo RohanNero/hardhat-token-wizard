@@ -1,0 +1,10 @@
+.env
+node_modules
+artifacts
+cache
+deployments
+yarn.lock
+draftNotes.txt
+coverage
+coverage.json
+stopReadingMyFiles.lol
