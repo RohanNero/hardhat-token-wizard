@@ -2,7 +2,9 @@
 
 pragma solidity ^0.8.7;
 
+import "./PriceConverter.sol";
 import "hardhat/console.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 error TokenWizard__InvalidCallerAddress(
     address borrower,
@@ -28,6 +30,7 @@ error TokenWizard__LenderMustSendBorrowAmount();
 error TokenWizard__AlreadyWithdrawnBorrowAmount();
 error TokenWizard__WithdrawalFailed();
 error TokenWizard__ContractMustBeApproved();
+error TokenWizard__BorrowerMustApproveFirst();
 
 /**@title platform for creating financialContracts using physical objects as collateral
    @author Rohan Nero
@@ -35,6 +38,8 @@ error TokenWizard__ContractMustBeApproved();
    tweaked in the future for gas reaons. The contract currently acts as a 'middleman' that takes no money */
 contract TokenWizard {
     /** type declarations and state variables */
+
+    using PriceConverter for uint256;
 
     /**@dev this address is saved and updated whenever a user proposes revisions to the contract */
     address private proposer;
@@ -64,8 +69,10 @@ contract TokenWizard {
     Contract private twContract;
     FinancialTerms private revisedFinancialTerms;
 
+    AggregatorV3Interface private priceFeed;
+
     struct FinancialTerms {
-        uint256 borrowAmount; ///@dev amount of liquidity being borrowed (may be in terms of WEI, USD, etc)
+        uint256 borrowAmount; ///@dev amount of liquidity being borrowed in chosen currency (followed by 8 decimal places)
         uint8 interestRate; ///@dev interest rate on the borrowed liquidity
         uint32 interestCompoundingInterval; ///@dev interest compounding time interval in seconds
         uint32 dueDate; ///@dev unix timestamp
@@ -79,7 +86,7 @@ contract TokenWizard {
         string objectURI; ///@dev similar to NFT URI, this points to JSON containing a name, description, and an imageURI
         address payable borrower; ///@dev user who is listing their physical item as collateral to borrow liquidity from a lender
         address payable lender; ///@dev user who is lending liquidity to the borrower
-        uint256 amountOwed; ///@dev uint representing amount borrower still owes to the lender (updated daily from interest with chainlink)
+        uint256 amountOwed; ///@dev uint representing amount borrower still owes to the lender in chosen currency (8 decimal places)
         FinancialTerms financialTerms; ///@dev FinancialTerms struct containing atleast 8 uints detailing terms of contract
     }
 
@@ -107,7 +114,7 @@ contract TokenWizard {
     event PaymentMade(uint256 amountPaid, uint256 amountStillOwed);
     /**@notice timeTaken is the time in seconds: since the contract was approved until it was completely paid off */
     event ContractCompleted(uint256 totalAmountPaid, uint32 timeTaken);
-    event WithdrawalSuccessful(address indexed withdrawer, uint32 amount);
+    event WithdrawalSuccessful(address indexed withdrawer, uint256 amount);
 
     modifier onlyInvolvedParties() {
         if (
@@ -152,7 +159,8 @@ contract TokenWizard {
         string memory _objectUri,
         address payable borrower,
         address payable lender,
-        FinancialTerms memory financialTerms
+        FinancialTerms memory financialTerms,
+        address _priceFeed
     ) payable {
         if (borrower == lender) {
             revert TokenWizard__BorrowerCantBeLender(borrower, lender);
@@ -173,14 +181,16 @@ contract TokenWizard {
             financialTerms.borrowAmount,
             financialTerms
         );
+        priceFeed = AggregatorV3Interface(_priceFeed);
         if (msg.sender == borrower) {
             borrowerApproved = true;
-        } else if (msg.sender == lender) {
-            /** @dev if lender deployed contract and passed borrowAmount to contract then sets lenderApproved = true */
-            if (msg.value >= twContract.financialTerms.borrowAmount) {
-                lenderApproved = true;
-            }
-        }
+        } /** else if (msg.sender == lender) {
+             This was causing test to fail with massive error code, guessing its caused by function call to external contract
+            /*  @dev if lender deployed contract and passed borrowAmount to contract then sets lenderApproved = true 
+            // if (msg.value.getConversionRate(priceFeed) >= (twContract.financialTerms.borrowAmount * 1e10)) {
+            //     lenderApproved = true;
+            // } 
+        } */
         emit ContractDrafted(
             twContract.amountOwed,
             twContract.borrower,
@@ -188,61 +198,113 @@ contract TokenWizard {
         );
     }
 
-    /** @notice proof that both parties agree to contract terms on-chain && borrowAmount transferred to contract/borrower
-      @dev setting borrowerApproved/lenderApproved bool to true */
-    function approveContract() public payable onlyInvolvedParties {
-        if (
-            (msg.sender == twContract.borrower && borrowerApproved == true) ||
-            (msg.sender == twContract.lender && lenderApproved == true)
-        ) {
-            revert TokenWizard__AlreadyApprovedContract();
-        } else if (borrowerApproved == false && lenderApproved == false) {
-            if (msg.sender == twContract.borrower) {
-                borrowerApproved = true;
-            } else if (msg.sender == twContract.lender) {
-                if (msg.value >= twContract.amountOwed) {
-                    lenderApproved = true;
-                } else {
-                    revert TokenWizard__LenderMustSendBorrowAmount();
+    /** @notice lender can send funds directly to the contract to approve it, and borrower can too instead of using makePayment() function */
+    receive() external payable {
+        if (msg.sender == twContract.lender) {
+            if (lenderApproved == true) {
+                revert TokenWizard__AlreadyApprovedContract();
+            } else if (
+                msg.value.getEthConversionRate(priceFeed) >=
+                twContract.financialTerms.borrowAmount * 1e10 ||
+                address(this).balance.getEthConversionRate(priceFeed) >=
+                twContract.financialTerms.borrowAmount * 1e10
+            ) {
+                if (borrowerApproved == true) {
+                    (bool sent, ) = twContract.borrower.call{
+                        value: twContract
+                            .financialTerms
+                            .borrowAmount
+                            .getXConversionRate(priceFeed)
+                    }("");
+                    if (sent) {
+                        lenderApproved = true;
+                    } else {
+                        revert TokenWizard__BorrowAmountTransferFailed();
+                    }
                 }
             }
         } else if (
             msg.sender == twContract.borrower && lenderApproved == true
         ) {
-            borrowerApproved = true;
-            (bool sent, ) = twContract.borrower.call{
-                value: twContract.financialTerms.borrowAmount
-            }("");
-            if (sent == true) {
-                startingTimestamp = uint32(block.timestamp);
-                emit BorrowAmountTransferred(
-                    twContract.lender,
-                    twContract.financialTerms.borrowAmount,
-                    twContract.borrower
+            uint256 amountPaid = msg.value.getEthConversionRate(priceFeed) /
+                1e10;
+            totalPaid += amountPaid;
+            totalPaidThisTerm += amountPaid;
+            if (int256(twContract.amountOwed - amountPaid) > 0) {
+                twContract.amountOwed -= amountPaid;
+                emit PaymentMade(amountPaid, twContract.amountOwed);
+            } else if (int256(twContract.amountOwed - amountPaid) <= 0) {
+                twContract.amountOwed = 0;
+                emit ContractCompleted(
+                    totalPaid,
+                    uint32(block.timestamp - startingTimestamp)
                 );
-            } else {
-                revert TokenWizard__BorrowAmountTransferFailed();
             }
-        } else if (
-            msg.sender == twContract.lender && borrowerApproved == true
-        ) {
-            if (msg.value >= twContract.amountOwed) {
-                lenderApproved = true;
-            } else {
-                revert TokenWizard__LenderMustSendBorrowAmount();
+        }
+    }
+
+    /** @notice proof that both parties agree to contract terms on-chain && borrowAmount transferred to contract/borrower
+      @dev setting borrowerApproved/lenderApproved bool to true */
+    function approveContract() public payable onlyInvolvedParties {
+        if (lenderApproved == true) {
+            revert TokenWizard__AlreadyApprovedContract();
+        } else if (msg.sender == twContract.borrower) {
+            if (borrowerApproved == false) {
+                borrowerApproved = true;
+                if (
+                    address(this).balance.getEthConversionRate(priceFeed) >=
+                    twContract.financialTerms.borrowAmount * 1e10
+                ) {
+                    (bool sent, ) = twContract.borrower.call{
+                        value: twContract
+                            .financialTerms
+                            .borrowAmount
+                            .getXConversionRate(priceFeed)
+                    }("");
+                    if (sent) {
+                        lenderApproved = true;
+                        startingTimestamp = uint32(block.timestamp);
+                        emit BorrowAmountTransferred(
+                            twContract.lender,
+                            twContract.amountOwed,
+                            twContract.borrower
+                        );
+                    } else {
+                        revert TokenWizard__BorrowAmountTransferFailed();
+                    }
+                }
+            } else if (borrowerApproved == true) {
+                revert TokenWizard__AlreadyApprovedContract();
             }
-            (bool sent, ) = twContract.borrower.call{
-                value: twContract.financialTerms.borrowAmount
-            }("");
-            if (sent == true) {
-                emit BorrowAmountTransferred(
-                    twContract.lender,
-                    twContract.financialTerms.borrowAmount,
-                    twContract.borrower
-                );
-                startingTimestamp = uint32(block.timestamp);
-            } else {
-                revert TokenWizard__BorrowAmountTransferFailed();
+        } else if (msg.sender == twContract.lender) {
+            if (borrowerApproved == true) {
+                if (
+                    (msg.value.getEthConversionRate(priceFeed) >=
+                        (twContract.financialTerms.borrowAmount * 1e10)) ||
+                    (address(this).balance.getEthConversionRate(priceFeed) >=
+                        twContract.financialTerms.borrowAmount * 1e10)
+                ) {
+                    (bool sent, ) = twContract.borrower.call{
+                        value: twContract.amountOwed.getXConversionRate(
+                            priceFeed
+                        )
+                    }("");
+                    if (sent) {
+                        lenderApproved = true;
+                        startingTimestamp = uint32(block.timestamp);
+                        emit BorrowAmountTransferred(
+                            twContract.lender,
+                            twContract.amountOwed,
+                            twContract.borrower
+                        );
+                    } else {
+                        revert TokenWizard__BorrowAmountTransferFailed();
+                    }
+                } else {
+                    revert TokenWizard__LenderMustSendBorrowAmount();
+                }
+            } else if (borrowerApproved == false) {
+                revert TokenWizard__BorrowerMustApproveFirst();
             }
         }
     }
@@ -293,40 +355,63 @@ contract TokenWizard {
         emit ContractFinancialTermsRevised(oldTerms, twContract.financialTerms);
     }
 
+    /** @dev borrower can use this function to repay the lender */
+    function makePayment() public payable mustBeApproved {
+        if (msg.sender != twContract.borrower) {
+            revert TokenWizard__InvalidCallerAddress(
+                twContract.borrower,
+                twContract.lender,
+                msg.sender
+            );
+        }
+        uint256 amountPaid = msg.value.getEthConversionRate(priceFeed) / 1e10;
+        totalPaid += amountPaid;
+        totalPaidThisTerm += amountPaid;
+        if (int256(twContract.amountOwed - amountPaid) > 0) {
+            twContract.amountOwed -= amountPaid;
+            emit PaymentMade(amountPaid, twContract.amountOwed);
+        } else if (int256(twContract.amountOwed - amountPaid) <= 0) {
+            twContract.amountOwed = 0;
+            emit ContractCompleted(
+                totalPaid,
+                uint32(block.timestamp - startingTimestamp)
+            );
+        }
+    }
+
     /** @notice lender uses this to withdraw ETH the borrower has sent 
         @dev does borrower ever actually need to call this function? */
     function withdraw() public onlyInvolvedParties mustBeApproved {
-        // if (msg.sender == twContract.borrower) {
-        //     if (borrowerApproved && lenderApproved) {
-        //         if (borrowerAmountWithdrawn == false) {
-        //             (bool sent, ) = twContract.borrower.call{
-        //                 value: uint256(twContract.financialTerms.borrowAmount)
-        //             }("");
-        //             if (sent) {
-        //                 emit WithdrawalSuccessful(
-        //                     msg.sender,
-        //                     twContract.financialTerms.borrowAmount
-        //                 );
-        //             } else {
-        //                 revert TokenWizard__WithdrawalFailed();
-        //             }
-        //         } else {
-        //             revert TokenWizard__AlreadyWithdrawnBorrowAmount();
-        //         }
-        //     } else {
-        //         revert TokenWizard__ContractMustBeApproved();
-        //     }
-        // }
+        /*if (msg.sender == twContract.borrower) {
+            if (borrowerApproved && lenderApproved) {
+                if (borrowerAmountWithdrawn == false) {
+                    (bool sent, ) = twContract.borrower.call{
+                        value: uint256(twContract.financialTerms.borrowAmount)
+                    }("");
+                    if (sent) {
+                        emit WithdrawalSuccessful(
+                            msg.sender,
+                            twContract.financialTerms.borrowAmount
+                        );
+                    } else {
+                        revert TokenWizard__WithdrawalFailed();
+                    }
+                } else {
+                    revert TokenWizard__AlreadyWithdrawnBorrowAmount();
+                }
+            } else {
+                revert TokenWizard__ContractMustBeApproved();
+            }
+        } */
         if (msg.sender == twContract.lender) {
-            uint256 balBeforeWithdraw = address(this).balance;
+            uint256 balBeforeWithdraw = address(this)
+                .balance
+                .getEthConversionRate(priceFeed) / 1e10; // to emit amount withdrawn in X currency
             (bool sent, ) = twContract.lender.call{
                 value: address(this).balance
             }("");
             if (sent) {
-                emit WithdrawalSuccessful(
-                    msg.sender,
-                    uint32(balBeforeWithdraw)
-                );
+                emit WithdrawalSuccessful(msg.sender, balBeforeWithdraw);
             } else {
                 revert TokenWizard__WithdrawalFailed();
             }
@@ -339,31 +424,21 @@ contract TokenWizard {
         }
     }
 
-    /** @dev borrower uses this function to repay the lender */
-    function makePayment() public payable mustBeApproved {
-        if (msg.sender != twContract.borrower) {
-            revert TokenWizard__InvalidCallerAddress(
-                twContract.borrower,
-                twContract.lender,
-                msg.sender
-            );
-        }
-        totalPaid += msg.value;
-        totalPaidThisTerm += msg.value;
-        if (int256(twContract.amountOwed - msg.value) > 0) {
-            twContract.amountOwed -= msg.value;
-            emit PaymentMade(msg.value, twContract.amountOwed);
-        } else if (int256(twContract.amountOwed - msg.value) <= 0) {
-            twContract.amountOwed = 0;
-            emit ContractCompleted(
-                totalPaid,
-                uint32(block.timestamp - startingTimestamp)
-            );
-        }
-    }
-    
-
     /** view/pure functions */
+
+    /* commented this function out to practice using embedded Library instead (all internal library functions)
+    // this function uses the given priceFeed to convert an ethAmount(wei) into it the chosen currency 
+    function viewEthConversionPrice(uint256 ethAmount)
+         public
+         view
+         returns (uint256)
+     {
+         (, int256 rawPriceData, , , ) = priceFeed.latestRoundData();
+         uint256 priceData = uint256(rawPriceData * 1e10);
+         uint256 price = (priceData * ethAmount) / 1e18;
+         return price;
+     }   
+    */
 
     /** @dev returns uint32 amountOwed from twContract struct */
     function viewAmountStillOwed() public view returns (uint256) {
