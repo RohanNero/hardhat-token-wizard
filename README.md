@@ -1,7 +1,7 @@
 # **Tokenization Wizard**
 
-I wanted to create a platform/method where **any** user could poentially borrow any amount of liquidity *(currently capped at 2^32)* by using a physical object they own as collateral.
-At the same time any user can become a lender and lend to any user they choose to, with a list of customizable contract **`financialTerms`**. 
+I wanted to create a platform where **any** user could potentially borrow any amount of liquidity *(currently capped at 2^32)* by using something they own as collateral.
+At the same time **any** user can become a lender and lend to anyone they choose to, with a list of customizable contract **`financialTerms`**. 
 **The goal of this project is to create the foundation of that, in such a way that anyone may build on top of it to better fit their desired needs.**
 
 ---
@@ -22,4 +22,4 @@ Users may deploy a **TokenWizard** `contract` by passing all the contract parame
 
 ---
 
-Once the **TokenWizard** contract is deployed the contract details are publicly availiable for everyone to view. Once both parties have approved the contract by calling **`approveContract()`**, automation will start to check back in at the specific time interval and perform upkeep on the contract by updating the contract details such as the amount still owed or number of late payments. *(if the TokenWizard contract is deployed by either the borrower or the lender then approveContract() is automatically called by that user, meaning only the other involved party will have to approve the contract)*
+Once the **TokenWizard** contract is deployed the contract details are publicly available for everyone to view. Once both parties have approved the contract by calling **`approveContract()`**, automation will start to check back in at the specified time interval and perform upkeep on the contract by updating the contract information such as the amount still owed or number of late payments. *(if the TokenWizard contract is deployed by the borrower then approveContract() is automatically called by that user, meaning only the lender will have to approve the contract)*
