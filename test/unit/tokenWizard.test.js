@@ -641,7 +641,7 @@ const { assert, expect } = require("chai")
                   assert.equal(value.toString(), ["true", "false"])
               })
           })
-          describe("viewContractBalance", function () {
+          describe.only("viewContractBalance", function () {
               it("returns contract balance correctly", async function () {
                   const initVal = await tokenWizard.viewContractBalance()
                   await tokenWizard
