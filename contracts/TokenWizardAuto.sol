@@ -13,15 +13,19 @@ error TokenWizard__InvalidCallerAddress(
     address user
 );
 error TokenWizard__InvalidInterestParameters(
-    uint32 interestRate,
-    uint32 interestCompoundingInterval
+    uint40 interestRate,
+    uint40 interestCompoundingInterval
 );
-error TokenWizard__AlreadyApprovedContract();
-error TokenWizard__BorrowerCantBeLender(address borrower, address lender);
+error TokenWizard__InvalidLateFeeParameters(
+    uint40 lateFeePercent,
+    uint40 lateFeeCompoundingInterval
+);
 error TokenWizard__PaymentArrayLengthsNotEqual(
     uint16 paymentAmountsArrayLength,
     uint16 paymentDatesArrayLength
 );
+error TokenWizard__AlreadyApprovedContract();
+error TokenWizard__BorrowerCantBeLender(address borrower, address lender); // should borrower be allowed to be lender?
 error TokenWizard__ProposerCannotApprove(address proposer);
 error TokenWizard__CannotChangeBorrowAmount(
     uint256 borrowAmount,
@@ -30,9 +34,8 @@ error TokenWizard__CannotChangeBorrowAmount(
 error TokenWizard__OncePerHour(uint16 secondsRemaining);
 error TokenWizard__NoFinancialRevisionPending();
 error TokenWizard__BorrowAmountTransferFailed();
-error TokenWizard__AlreadyTransferredBorrowAmount();
 error TokenWizard__LenderMustSendBorrowAmount();
-error TokenWizard__AlreadyWithdrawnBorrowAmount();
+//error TokenWizard__AlreadyWithdrawnBorrowAmount(); // maybe outdated along with borrower withdraw()
 error TokenWizard__WithdrawalFailed();
 error TokenWizard__ContractMustBeApproved();
 error TokenWizard__BorrowerMustApproveFirst();
@@ -41,7 +44,7 @@ error TokenWizard__BorrowerMustApproveFirst();
    @author Rohan Nero
    @notice I think by having the liquidity sent to this contract and then to the other address could be 
    tweaked in the future for gas reaons. The contract currently acts as a 'middleman' that takes no money */
-contract TokenWizard is AutomationCompatibleInterface {
+contract TokenWizardAuto is AutomationCompatibleInterface {
     /** type declarations and state variables */
 
     using PriceConverter for uint256;
@@ -57,7 +60,7 @@ contract TokenWizard is AutomationCompatibleInterface {
     bool private lenderApproved;
 
     /**@dev this timestamp gets initialized once the contract is approved by both parties */
-    uint32 private startingTimestamp;
+    uint40 private startingTimestamp;
 
     /**@dev total amount paid by the borrower over the course of the contract's life */
     uint256 private totalPaid;
@@ -66,10 +69,16 @@ contract TokenWizard is AutomationCompatibleInterface {
     uint256 private totalPaidThisTerm;
 
     /**@dev this uint represents the revised twContract.amountOwed */
-    uint32 private revisedAmountOwed;
+    uint40 private revisedAmountOwed;
 
     /**@dev use to limit the amount of time a user must wait between proposing changes to the contract terms */
-    uint32 private lastProposalTimestamp;
+    uint40 private lastProposalTimestamp;
+
+    /**@dev used to track when interest was last added onto amount owed */
+    uint40 private lastCompoundedTimestamp;
+
+    /**@dev used to track when lateFee was last added onto amount owed */
+    uint40 private lastPenalizedAt;
 
     /**@dev used to track amount of times a user missed a payment due date */
     uint24 private numOfLatePayments;
@@ -78,20 +87,20 @@ contract TokenWizard is AutomationCompatibleInterface {
     FinancialTerms private revisedFinancialTerms;
 
     /** Chainlink variables */
-    uint32 private lastCompoundedTimestamp;
-    //uint32 private currentPaymentDueDate;
+
+    //uint40 private currentPaymentDueDate;
 
     AggregatorV3Interface private priceFeed;
 
     struct FinancialTerms {
         uint256 borrowAmount; ///@dev amount of liquidity being borrowed in chosen currency (8 decimals)
-        uint32 interestRate; ///@dev interest rate on the borrowed liquidity (8 decimals)
-        uint32 interestCompoundingInterval; ///@dev interest compounding time interval in seconds
-        uint32 dueDate; ///@dev unix timestamp
-        uint32 lateFeePercent; /**@dev percentage used to caluclate how much is charged if payment is late.
+        uint40 interestRate; ///@dev interest rate on the borrowed liquidity (8 decimals)
+        uint40 interestCompoundingInterval; ///@dev interest compounding time interval in seconds
+        uint40 dueDate; ///@dev unix timestamp
+        uint40 lateFeePercent; /**@dev percentage used to caluclate how much is charged if payment is late.
         The lateFeePercent is of the missed payment if there is one, otherwise its based off the twContract.amountOwed uint (8 decimals) */
-        uint32 lateFeeCompoundingInterval; ///@dev late fee compounding time interval in seconds
-        uint32[] paymentDates; ///@dev array of unix timestamps representing when payments will be due
+        uint40 lateFeeCompoundingInterval; ///@dev late fee compounding time interval in seconds
+        uint40[] paymentDates; ///@dev array of unix timestamps representing when payments will be due
         uint256[] paymentAmounts; ///@dev array of amounts corresponding to payment dates (8 decimals)
     }
 
@@ -126,8 +135,20 @@ contract TokenWizard is AutomationCompatibleInterface {
     );
     event PaymentMade(uint256 amountPaid, uint256 amountStillOwed);
     /**@notice timeTaken is the time in seconds: since the contract was approved until it was completely paid off */
-    event ContractCompleted(uint256 totalAmountPaid, uint32 timeTaken);
+    event ContractCompleted(uint256 totalAmountPaid, uint40 timeTaken);
     event WithdrawalSuccessful(address indexed withdrawer, uint256 amount);
+
+    /**@dev these two events are inside performUpkeep() */
+    event InterestAdded(
+        uint256 initialAmountOwed,
+        uint256 amountOwed,
+        uint256 timesInterestCompounded
+    );
+    event LateFeeCharged(
+        uint256 initialAmountOwed,
+        uint256 amountOwed,
+        uint256 timesLateFeeCompounded
+    );
 
     modifier onlyInvolvedParties() {
         if (
@@ -179,14 +200,25 @@ contract TokenWizard is AutomationCompatibleInterface {
             revert TokenWizard__BorrowerCantBeLender(borrower, lender);
         }
         if (
-            (twContract.financialTerms.interestRate > 0 &&
-                twContract.financialTerms.interestCompoundingInterval == 0) ||
-            (twContract.financialTerms.interestCompoundingInterval > 0 &&
-                twContract.financialTerms.interestRate == 0)
+            (financialTerms.interestRate > 0 &&
+                financialTerms.interestCompoundingInterval == 0) ||
+            (financialTerms.interestCompoundingInterval > 0 &&
+                financialTerms.interestRate == 0)
         ) {
             revert TokenWizard__InvalidInterestParameters(
-                twContract.financialTerms.interestRate,
-                twContract.financialTerms.interestCompoundingInterval
+                financialTerms.interestRate,
+                financialTerms.interestCompoundingInterval
+            );
+        }
+        if (
+            (financialTerms.lateFeePercent > 0 &&
+                financialTerms.lateFeeCompoundingInterval == 0) ||
+            (financialTerms.lateFeeCompoundingInterval > 0 &&
+                financialTerms.lateFeePercent == 0)
+        ) {
+            revert TokenWizard__InvalidLateFeeParameters(
+                financialTerms.lateFeePercent,
+                financialTerms.lateFeeCompoundingInterval
             );
         }
         if (
@@ -261,7 +293,7 @@ contract TokenWizard is AutomationCompatibleInterface {
                 twContract.amountOwed = 0;
                 emit ContractCompleted(
                     totalPaid,
-                    uint32(block.timestamp - startingTimestamp)
+                    uint40(block.timestamp - startingTimestamp)
                 );
             }
         }
@@ -287,8 +319,8 @@ contract TokenWizard is AutomationCompatibleInterface {
                     }("");
                     if (sent) {
                         lenderApproved = true;
-                        startingTimestamp = uint32(block.timestamp);
-                        lastCompoundedTimestamp = uint32(block.timestamp);
+                        startingTimestamp = uint40(block.timestamp);
+                        lastCompoundedTimestamp = uint40(block.timestamp);
                         emit BorrowAmountTransferred(
                             twContract.lender,
                             twContract.amountOwed,
@@ -316,8 +348,8 @@ contract TokenWizard is AutomationCompatibleInterface {
                     }("");
                     if (sent) {
                         lenderApproved = true;
-                        startingTimestamp = uint32(block.timestamp);
-                        lastCompoundedTimestamp = uint32(block.timestamp);
+                        startingTimestamp = uint40(block.timestamp);
+                        lastCompoundedTimestamp = uint40(block.timestamp);
                         emit BorrowAmountTransferred(
                             twContract.lender,
                             twContract.amountOwed,
@@ -337,7 +369,7 @@ contract TokenWizard is AutomationCompatibleInterface {
 
     /** @notice this function allows borrower/lender to propose a change to the twContract's financialTerms */
     function proposeFinancialTermsRevision(
-        uint32 amountOwed,
+        uint40 amountOwed,
         FinancialTerms memory financialTerms
     ) public onlyInvolvedParties oncePerHour {
         if (
@@ -361,7 +393,7 @@ contract TokenWizard is AutomationCompatibleInterface {
         );
         revisedAmountOwed = amountOwed;
         proposer = msg.sender;
-        lastProposalTimestamp = uint32(block.timestamp);
+        lastProposalTimestamp = uint40(block.timestamp);
         emit RevisedFinancialTermsProposed(msg.sender, financialTerms);
     }
 
@@ -401,7 +433,7 @@ contract TokenWizard is AutomationCompatibleInterface {
             twContract.amountOwed = 0;
             emit ContractCompleted(
                 totalPaid,
-                uint32(block.timestamp - startingTimestamp)
+                uint40(block.timestamp - startingTimestamp)
             );
         }
     }
@@ -451,7 +483,153 @@ contract TokenWizard is AutomationCompatibleInterface {
         }
     }
 
-    /** Chainlink automation functions */
+    /** @notice chainlink calls this function when checkUpkeep() returns true 
+     * @dev updates twContract.amountOwed using interest and/or lateFees if either have been implemented in the contract terms
+    */
+    function performUpkeep(
+        bytes memory /*performData*/
+    ) external override {
+        /**@dev this if statement deals with updating amountOwed with interest. */
+        //console.log("block:", block.timestamp);
+        //console.log("lastCompoundedTimestamp:", lastCompoundedTimestamp);
+        //console.log("difference:",block.timestamp - lastCompoundedTimestamp );
+        //console.log("interval:", twContract.financialTerms.interestCompoundingInterval);
+        if (twContract.financialTerms.interestRate > 0) {
+            uint256 interestCompoundsNeeded = (block.timestamp -
+                lastCompoundedTimestamp) /
+                twContract.financialTerms.interestCompoundingInterval;
+            //console.log(interestCompoundsNeeded);
+            if (
+                interestCompoundsNeeded > 0 &&
+                twContract.financialTerms.interestRate > 0
+            ) {
+                //console.log("amountOwed:", twContract.amountOwed);
+                //console.log("interestRate:", twContract.financialTerms.interestRate);
+                //console.log("compoundsNeeded:", interestCompoundsNeeded);
+                uint256 initialAmountOwed = twContract.amountOwed;
+                for (uint256 i = 0; i < interestCompoundsNeeded; i++) {
+                    //console.log("addedValue:",(1e10 / twContract.financialTerms.interestRate) );
+                    //console.log(twContract.amountOwed /
+                    //    (1e10 / twContract.financialTerms.interestRate));
+                    twContract.amountOwed +=
+                        twContract.amountOwed /
+                        (1e10 / twContract.financialTerms.interestRate);
+                }
+                lastCompoundedTimestamp = uint40(block.timestamp);
+                emit InterestAdded(
+                    initialAmountOwed,
+                    twContract.amountOwed,
+                    interestCompoundsNeeded
+                );
+            }
+        }
+
+        /**@dev this if statment deals with the lateFee and late payments */
+        uint256 initialAmountOwed = twContract.amountOwed;
+        if (twContract.financialTerms.lateFeePercent > 0) {
+            if (twContract.financialTerms.dueDate <= uint40(block.timestamp)) {
+                if (lastPenalizedAt == 0) {
+                    // console.log(
+                    //     "DifferenceSol:",
+                    //     block.timestamp - twContract.financialTerms.dueDate
+                    // );
+                    // console.log(
+                    //     "Interval:",
+                    //     twContract.financialTerms.lateFeeCompoundingInterval
+                    // );
+                    uint256 lateFeeCompoundsNeeded = ((block.timestamp -
+                        twContract.financialTerms.dueDate) /
+                        twContract.financialTerms.lateFeeCompoundingInterval);
+                    for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
+                        twContract.amountOwed +=
+                            (twContract.amountOwed - totalPaid) /
+                            ((100 * 1e8) /
+                                twContract.financialTerms.lateFeePercent);
+                    }
+                    lastPenalizedAt = uint40(block.timestamp);
+                    emit LateFeeCharged(
+                        initialAmountOwed,
+                        twContract.amountOwed,
+                        lateFeeCompoundsNeeded
+                    );
+                } else {
+                    uint256 lateFeeCompoundsNeeded = ((block.timestamp -
+                        lastPenalizedAt) /
+                        twContract.financialTerms.lateFeeCompoundingInterval);
+                    for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
+                        twContract.amountOwed +=
+                            (twContract.amountOwed - totalPaid) /
+                            ((100 * 1e8) /
+                                twContract.financialTerms.lateFeePercent);
+                    }
+                    lastPenalizedAt = uint40(block.timestamp);
+                    emit LateFeeCharged(
+                        initialAmountOwed,
+                        twContract.amountOwed,
+                        lateFeeCompoundsNeeded
+                    );
+                }
+            } else {
+                if (twContract.financialTerms.paymentDates[0] > 0) {
+                    // this for loop gets the totalAmount that should have been paid already (as of current block.timestamp)
+                    uint256 outstandingBalance;
+                    uint40 recentDueDate;
+                    for (
+                        uint256 i = 0;
+                        i < twContract.financialTerms.paymentDates.length;
+                        i++
+                    ) {
+                        if (
+                            twContract.financialTerms.paymentDates[i] <=
+                            block.timestamp
+                        ) {
+                            recentDueDate = twContract
+                                .financialTerms
+                                .paymentDates[i];
+                            outstandingBalance += twContract
+                                .financialTerms
+                                .paymentAmounts[i];
+                        }
+                    }
+                    //console.log("outstandingBal:", outstandingBalance);
+                    //console.log("recentDueDate:", recentDueDate);
+                    //console.log("timeSinceDueDate:", (block.timestamp - recentDueDate));
+                    if (outstandingBalance > totalPaid) {
+                        uint256 lateFeeCompoundsNeeded = ((block.timestamp -
+                            recentDueDate) /
+                            twContract
+                                .financialTerms
+                                .lateFeeCompoundingInterval);
+                        //console.log("lateFeeCompoundsNeeded:", lateFeeCompoundsNeeded);
+                        //console.log("lateFeePercent:", twContract.financialTerms.lateFeePercent);
+                        //console.log("divideNum:", (1e10 /
+                        //        twContract.financialTerms.lateFeePercent));
+                        uint256 cumulativeOutstandingBal = outstandingBalance;
+                        for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
+                            //console.log("cumulativeOutstandingBal:", cumulativeOutstandingBal);
+                            //console.log("amountOwed:", twContract.amountOwed);
+                            twContract.amountOwed +=
+                                (cumulativeOutstandingBal - totalPaid) /
+                                (1e10 /
+                                    twContract.financialTerms.lateFeePercent);
+                            cumulativeOutstandingBal +=
+                                (cumulativeOutstandingBal - totalPaid) /
+                                (1e10 /
+                                    twContract.financialTerms.lateFeePercent);
+                        }
+                        lastPenalizedAt = uint40(block.timestamp);
+                        emit LateFeeCharged(
+                            initialAmountOwed,
+                            twContract.amountOwed,
+                            lateFeeCompoundsNeeded
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /** view/pure functions */
 
     /** @dev this function will return true if either one of these two conditions are met:
      * 1. if interestCompoundingInterval is greater than amount of time since interest was updated
@@ -468,27 +646,36 @@ contract TokenWizard is AutomationCompatibleInterface {
             bytes memory /*performData*/
         )
     {
+        /**@dev late payment related upkeep checks */
         bool paymentDue;
-        if (twContract.financialTerms.paymentDates[0] == 0) {
-            paymentDue = false;
+        if (block.timestamp >= twContract.financialTerms.dueDate) {
+            paymentDue = true;
         } else {
-            // this for loop gets the totalAmount that should have been paid already (as of current block.timestamp)
-            uint256 cumulativeSum;
-            for (
-                uint256 i = 0;
-                i < twContract.financialTerms.paymentDates.length;
-                i++
-            ) {
-                if (
-                    twContract.financialTerms.paymentDates[i] <= block.timestamp
+            if (twContract.financialTerms.paymentDates[0] == 0) {
+                paymentDue = false;
+            } else {
+                // this for loop gets the totalAmount that should have been paid already (as of current block.timestamp)
+                uint256 cumulativeSum;
+                for (
+                    uint256 i = 0;
+                    i < twContract.financialTerms.paymentDates.length;
+                    i++
                 ) {
-                    cumulativeSum += twContract.financialTerms.paymentAmounts[
-                        i
-                    ];
+                    //console.log("paymentDate:",twContract.financialTerms.paymentDates[i]);
+                    //console.log("blockTime:", block.timestamp);
+                    if (
+                        twContract.financialTerms.paymentDates[i] <=
+                        block.timestamp
+                    ) {
+                        cumulativeSum += twContract
+                            .financialTerms
+                            .paymentAmounts[i];
+                    }
                 }
+                paymentDue = (cumulativeSum > totalPaid);
             }
-            paymentDue = (cumulativeSum > totalPaid);
         }
+        /**@dev interest related upkeep checks */
         bool interestTimePassed;
         if (twContract.financialTerms.interestRate > 0) {
             interestTimePassed = (block.timestamp - lastCompoundedTimestamp >=
@@ -496,64 +683,11 @@ contract TokenWizard is AutomationCompatibleInterface {
         } else {
             interestTimePassed = false;
         }
+        /**@dev finally checking the values to return true or false */
         if (interestTimePassed || paymentDue) {
             upkeepNeeded = true;
         }
     }
-
-    ////// lEFT OFF RIGHT HERE: WAS MAKING IT SO LATE PAYMENTS UPDATES CONTRACT
-    /** Left off right here: need to implement upkeep logic for latePayments on twContract.financialTerms.dueDate
-     */
-    function performUpkeep(
-        bytes memory /*performData*/
-    ) external override {
-        /**@dev this if statement deals with updating amountOwed with interest. */
-        uint256 interestCompoundsNeeded = block.timestamp -
-            lastCompoundedTimestamp /
-            twContract.financialTerms.interestCompoundingInterval;
-        if (
-            interestCompoundsNeeded > 0 &&
-            twContract.financialTerms.interestRate > 0
-        ) {
-            for (uint256 i = 0; i < interestCompoundsNeeded; i++) {
-                twContract.amountOwed =
-                    twContract.amountOwed +
-                    ((twContract.amountOwed / (100 * 1e8)) /
-                        twContract.financialTerms.interestRate);
-            }
-        }
-
-        /**@dev this if statment deals with the lateFee and late payments */
-        if (twContract.financialTerms.paymentDates[0] > 0) {
-          // this for loop gets the totalAmount that should have been paid already (as of current block.timestamp)
-            uint256 outstandingBalance;
-            uint32 recentDueDate;
-            for (
-                uint256 i = 0;
-                i < twContract.financialTerms.paymentDates.length;
-                i++
-            ) {
-                if (
-                    twContract.financialTerms.paymentDates[i] <= block.timestamp
-                ) {
-                    recentDueDate = twContract.financialTerms.paymentDates[i];
-                    outstandingBalance += twContract.financialTerms.paymentAmounts[
-                        i
-                    ];
-                }
-            }
-            if(outstandingBalance > totalPaid) {
-                uint lateFeeCompoundsNeeded = ((block.timestamp - recentDueDate) / twContract.financialTerms.lateFeeCompoundingInterval);
-                for(uint i = 0; i < lateFeeCompoundsNeeded; i++){
-                    twContract.amountOwed += (outstandingBalance - totalPaid) / ((100 * 1e8) / twContract.financialTerms.lateFeePercent);
-                }
-                
-            }
-
-        } 
-    }
-
-    /** view/pure functions */
 
     /* commented this function out to practice using embedded Library instead (all internal library functions)
     // this function uses the given priceFeed to convert an ethAmount(wei) into it the chosen currency 
@@ -569,7 +703,7 @@ contract TokenWizard is AutomationCompatibleInterface {
      }   
     */
 
-    /** @dev returns uint32 amountOwed from twContract struct */
+    /** @dev returns uint40 amountOwed from twContract struct */
     function viewAmountStillOwed() public view returns (uint256) {
         return twContract.amountOwed;
     }
@@ -588,7 +722,7 @@ contract TokenWizard is AutomationCompatibleInterface {
     function viewProposedRevisalTerms()
         public
         view
-        returns (uint32, FinancialTerms memory)
+        returns (uint40, FinancialTerms memory)
     {
         return (revisedAmountOwed, revisedFinancialTerms);
     }
@@ -598,8 +732,8 @@ contract TokenWizard is AutomationCompatibleInterface {
         return proposer;
     }
 
-    /**@dev returns uint32 lastProposalTimestamp which is used with oncePerHour modifier */
-    function viewLastProposalTimestamp() public view returns (uint32) {
+    /**@dev returns uint40 lastProposalTimestamp which is used with oncePerHour modifier */
+    function viewLastProposalTimestamp() public view returns (uint40) {
         return lastProposalTimestamp;
     }
 
@@ -611,5 +745,10 @@ contract TokenWizard is AutomationCompatibleInterface {
     /**@dev returns uints totalPaid and totalPaidThisTerm */
     function viewTotalAmountPaid() public view returns (uint256, uint256) {
         return (totalPaid, totalPaidThisTerm);
+    }
+
+    /**@dev returns current block.timestamp */
+    function viewTimestamp() public view returns (uint40) {
+        return uint40(block.timestamp);
     }
 }
