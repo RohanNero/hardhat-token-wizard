@@ -12,6 +12,7 @@ error TokenWizard__InvalidCallerAddress(
     address lender,
     address user
 );
+//error TokenWizard__InvalidDueDateSelected(uint40 dueDate);
 error TokenWizard__InvalidInterestParameters(
     uint40 interestRate,
     uint40 interestCompoundingInterval
@@ -199,6 +200,10 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
         if (borrower == lender) {
             revert TokenWizard__BorrowerCantBeLender(borrower, lender);
         }
+        /**@dev checks to see if financialTerms parameters are ok */
+        // if (financialTerms.dueDate <= block.timestamp) {
+        //     revert TokenWizard__InvalidDueDateSelected(financialTerms.dueDate);
+        // }
         if (
             (financialTerms.interestRate > 0 &&
                 financialTerms.interestCompoundingInterval == 0) ||
@@ -483,9 +488,9 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
         }
     }
 
-    /** @notice chainlink calls this function when checkUpkeep() returns true 
+    /** @notice chainlink calls this function when checkUpkeep() returns true
      * @dev updates twContract.amountOwed using interest and/or lateFees if either have been implemented in the contract terms
-    */
+     */
     function performUpkeep(
         bytes memory /*performData*/
     ) external override {
@@ -527,40 +532,80 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
         /**@dev this if statment deals with the lateFee and late payments */
         uint256 initialAmountOwed = twContract.amountOwed;
         if (twContract.financialTerms.lateFeePercent > 0) {
+            uint256 divideTimestamp;
             if (twContract.financialTerms.dueDate <= uint40(block.timestamp)) {
                 if (lastPenalizedAt == 0) {
-                    // console.log(
-                    //     "DifferenceSol:",
-                    //     block.timestamp - twContract.financialTerms.dueDate
-                    // );
-                    // console.log(
-                    //     "Interval:",
-                    //     twContract.financialTerms.lateFeeCompoundingInterval
-                    // );
-                    uint256 lateFeeCompoundsNeeded = ((block.timestamp -
-                        twContract.financialTerms.dueDate) /
-                        twContract.financialTerms.lateFeeCompoundingInterval);
-                    for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
-                        twContract.amountOwed +=
-                            (twContract.amountOwed - totalPaid) /
-                            ((100 * 1e8) /
-                                twContract.financialTerms.lateFeePercent);
-                    }
-                    lastPenalizedAt = uint40(block.timestamp);
-                    emit LateFeeCharged(
-                        initialAmountOwed,
-                        twContract.amountOwed,
-                        lateFeeCompoundsNeeded
-                    );
+                    divideTimestamp = twContract.financialTerms.dueDate;
                 } else {
+                    divideTimestamp = lastPenalizedAt;
+                }
+                /**console.log("DifferenceBetween:",block.timestamp - twContract.financialTerms.dueDate);
+                console.log("Interval:",twContract.financialTerms.lateFeeCompoundingInterval); */
+                uint256 lateFeeCompoundsNeeded = ((block.timestamp -
+                    divideTimestamp) /
+                    twContract.financialTerms.lateFeeCompoundingInterval);
+                for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
+                    twContract.amountOwed +=
+                        (twContract.amountOwed - totalPaid) /
+                        ((100 * 1e8) /
+                            twContract.financialTerms.lateFeePercent);
+                }
+                lastPenalizedAt = uint40(block.timestamp);
+                emit LateFeeCharged(
+                    initialAmountOwed,
+                    twContract.amountOwed,
+                    lateFeeCompoundsNeeded
+                );
+            } else if (twContract.financialTerms.paymentDates[0] > 0) {
+                /**@dev  this for loop gets the totalAmount that should have been paid already (as of current block.timestamp) */
+                uint256 outstandingBalance;
+                uint40 recentDueDate;
+                for (
+                    uint256 i = 0;
+                    i < twContract.financialTerms.paymentDates.length;
+                    i++
+                ) {
+                    if (
+                        twContract.financialTerms.paymentDates[i] <=
+                        block.timestamp
+                    ) {
+                        recentDueDate = twContract.financialTerms.paymentDates[
+                            i
+                        ];
+                        outstandingBalance += twContract
+                            .financialTerms
+                            .paymentAmounts[i];
+                    }
+                }
+                /**@dev checking to see if user currently owes money from a past dueDate and charging lateFee if needed 
+                 console.log("outstandingBal:", outstandingBalance);
+                 console.log("recentDueDate:", recentDueDate);
+                 console.log("timeSinceDueDate:", (block.timestamp - recentDueDate)); */
+                if (outstandingBalance > totalPaid) {
+                    /**@dev checking to see what timestamp needs to be used to find out lateFeeCompoundsNeeded */
+                    if (lastPenalizedAt < recentDueDate) {
+                        divideTimestamp = recentDueDate;
+                    } else {
+                        divideTimestamp = lastPenalizedAt;
+                    }
                     uint256 lateFeeCompoundsNeeded = ((block.timestamp -
-                        lastPenalizedAt) /
+                        divideTimestamp) /
                         twContract.financialTerms.lateFeeCompoundingInterval);
+
+                    uint256 cumulativeOutstandingBal = outstandingBalance;
+                    /**@dev and finally looping through however many compounds are needed to add lateFee onto amountOwed 
+                     * console.log("lateFeeCompoundsNeeded:", lateFeeCompoundsNeeded);
+                        console.log("lateFeePercent:", twContract.financialTerms.lateFeePercent);
+                        console.log("divideNum:", (1e10 / twContract.financialTerms.lateFeePercent)); */
                     for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
+                        //console.log("cumulativeOutstandingBal:", cumulativeOutstandingBal);
+                        //console.log("amountOwed:", twContract.amountOwed);
                         twContract.amountOwed +=
-                            (twContract.amountOwed - totalPaid) /
-                            ((100 * 1e8) /
-                                twContract.financialTerms.lateFeePercent);
+                            (cumulativeOutstandingBal - totalPaid) /
+                            (1e10 / twContract.financialTerms.lateFeePercent);
+                        cumulativeOutstandingBal +=
+                            (cumulativeOutstandingBal - totalPaid) /
+                            (1e10 / twContract.financialTerms.lateFeePercent);
                     }
                     lastPenalizedAt = uint40(block.timestamp);
                     emit LateFeeCharged(
@@ -568,62 +613,6 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
                         twContract.amountOwed,
                         lateFeeCompoundsNeeded
                     );
-                }
-            } else {
-                if (twContract.financialTerms.paymentDates[0] > 0) {
-                    // this for loop gets the totalAmount that should have been paid already (as of current block.timestamp)
-                    uint256 outstandingBalance;
-                    uint40 recentDueDate;
-                    for (
-                        uint256 i = 0;
-                        i < twContract.financialTerms.paymentDates.length;
-                        i++
-                    ) {
-                        if (
-                            twContract.financialTerms.paymentDates[i] <=
-                            block.timestamp
-                        ) {
-                            recentDueDate = twContract
-                                .financialTerms
-                                .paymentDates[i];
-                            outstandingBalance += twContract
-                                .financialTerms
-                                .paymentAmounts[i];
-                        }
-                    }
-                    //console.log("outstandingBal:", outstandingBalance);
-                    //console.log("recentDueDate:", recentDueDate);
-                    //console.log("timeSinceDueDate:", (block.timestamp - recentDueDate));
-                    if (outstandingBalance > totalPaid) {
-                        uint256 lateFeeCompoundsNeeded = ((block.timestamp -
-                            recentDueDate) /
-                            twContract
-                                .financialTerms
-                                .lateFeeCompoundingInterval);
-                        //console.log("lateFeeCompoundsNeeded:", lateFeeCompoundsNeeded);
-                        //console.log("lateFeePercent:", twContract.financialTerms.lateFeePercent);
-                        //console.log("divideNum:", (1e10 /
-                        //        twContract.financialTerms.lateFeePercent));
-                        uint256 cumulativeOutstandingBal = outstandingBalance;
-                        for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {
-                            //console.log("cumulativeOutstandingBal:", cumulativeOutstandingBal);
-                            //console.log("amountOwed:", twContract.amountOwed);
-                            twContract.amountOwed +=
-                                (cumulativeOutstandingBal - totalPaid) /
-                                (1e10 /
-                                    twContract.financialTerms.lateFeePercent);
-                            cumulativeOutstandingBal +=
-                                (cumulativeOutstandingBal - totalPaid) /
-                                (1e10 /
-                                    twContract.financialTerms.lateFeePercent);
-                        }
-                        lastPenalizedAt = uint40(block.timestamp);
-                        emit LateFeeCharged(
-                            initialAmountOwed,
-                            twContract.amountOwed,
-                            lateFeeCompoundsNeeded
-                        );
-                    }
                 }
             }
         }

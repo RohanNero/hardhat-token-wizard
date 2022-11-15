@@ -35,7 +35,7 @@ const { assert, expect } = require("chai")
                   "uri",
                   deployer.address,
                   lender.address,
-                  [BORROW_AMOUNT, 2, 3, 4, 5, 6, [7], [8]],
+                  [BORROW_AMOUNT, 2, 3, 2114380800, 5, 6, [7], [8]],
                   mockAggregator.address
               )
           })
@@ -137,7 +137,7 @@ const { assert, expect } = require("chai")
                           BORROW_AMOUNT,
                           2,
                           3,
-                          4,
+                          2114380800,
                           5,
                           6,
                           7,
@@ -844,11 +844,11 @@ const { assert, expect } = require("chai")
                           BORROW_AMOUNT,
                           0,
                           0,
-                          timestamp + 4800,
+                          timestamp + 7777777,
                           2500000000,
                           600,
-                          [0],
-                          [0],
+                          [timestamp + 4800],
+                          [HALF_BORROW_AMOUNT],
                       ],
                       mockAggregator.address
                   )
@@ -863,6 +863,8 @@ const { assert, expect } = require("chai")
                   //console.log("dueDatetmestp:", dueDate.financialTerms.dueDate)
                   //console.log("difference:", initTimestamp - dueDate.financialTerms.dueDate)
                   await network.provider.send("evm_mine", [initTimestamp + 600])
+                  await tokenWizard.performUpkeep("0x")
+                  await network.provider.send("evm_mine", [initTimestamp + 1800])
                   await expect(tokenWizard.performUpkeep("0x")).to.emit(
                       tokenWizard,
                       "LateFeeCharged"
@@ -1047,7 +1049,7 @@ const { assert, expect } = require("chai")
                           BORROW_AMOUNT,
                           2,
                           3,
-                          4,
+                          2114380800,
                           5,
                           6,
                           7,
