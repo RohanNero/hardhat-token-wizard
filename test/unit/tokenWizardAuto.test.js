@@ -108,25 +108,25 @@ const { assert, expect } = require("chai")
                   )
               })
               it("reverts if only one lateFee parameter is zero", async function () {
-                const factory = await ethers.getContractFactory(
-                    "TokenWizardAuto",
-                    deployer
-                )
-                await expect(
-                    factory.deploy(
-                        "uri",
-                        deployer.address,
-                        lender.address,
-                        [BORROW_AMOUNT, 1, 2, 4, 5, 0, [7], [8]],
-                        mockAggregator.address
-                    )
-                ).to.be.revertedWithCustomError(
-                    tokenWizard,
-                    "TokenWizard__InvalidLateFeeParameters"
-                )
+                  const factory = await ethers.getContractFactory(
+                      "TokenWizardAuto",
+                      deployer
+                  )
+                  await expect(
+                      factory.deploy(
+                          "uri",
+                          deployer.address,
+                          lender.address,
+                          [BORROW_AMOUNT, 1, 2, 4, 5, 0, [7], [8]],
+                          mockAggregator.address
+                      )
+                  ).to.be.revertedWithCustomError(
+                      tokenWizard,
+                      "TokenWizard__InvalidLateFeeParameters"
+                  )
               })
               it("sets the contract terms equal to twContract", async function () {
-                  const value = await tokenWizard.viewContractInfo()
+                  const value = await tokenWizard.twContract()
                   assert.equal(
                       value.toString(),
                       [
@@ -276,7 +276,7 @@ const { assert, expect } = require("chai")
                           tokenWizard,
                           "TokenWizard__InvalidCallerAddress"
                       )
-                      .withArgs(deployer.address, lender.address, user.address)
+                      .withArgs(user.address)
               })
               it("reverts if msg.sender already approved the contract", async function () {
                   await expect(tokenWizard.approveContract())
@@ -435,7 +435,7 @@ const { assert, expect } = require("chai")
                           tokenWizard,
                           "TokenWizard__InvalidCallerAddress"
                       )
-                      .withArgs(deployer.address, lender.address, user.address)
+                      .withArgs(user.address)
               })
               it("reverts if msg.sender calls more than once per hour", async function () {
                   await tokenWizard.proposeFinancialTermsRevision(
@@ -476,8 +476,8 @@ const { assert, expect } = require("chai")
                       777,
                       revisedTerms
                   )
-                  const value = await tokenWizard.viewProposedRevisalTerms()
-                  assert.equal(value.toString(), [777, revisedTerms].toString())
+                  const value = await tokenWizard.revisedFinancialTerms()
+                  assert.equal(value.toString(), revisedTerms.slice(0,-2).toString())
               })
               it("sets the proposer variable equal to msg.sender", async function () {
                   await tokenWizard.proposeFinancialTermsRevision(
@@ -495,14 +495,15 @@ const { assert, expect } = require("chai")
                   const value = await tokenWizard.viewLastProposalTimestamp()
                   assert.equal(Date.now() / 1000 - value < 100, true)
               })
-              it("emits the RevisedFinancialTermsProposed event correctly", async function () {
-                  await expect(
-                      tokenWizard.proposeFinancialTermsRevision(
-                          777,
-                          revisedTerms
-                      )
-                  ).to.emit(tokenWizard, "RevisedFinancialTermsProposed")
-              })
+              /**@dev too gas expensive for now to leave in */
+            //   it("emits the RevisedFinancialTermsProposed event correctly", async function () {
+            //       await expect(
+            //           tokenWizard.proposeFinancialTermsRevision(
+            //               777,
+            //               revisedTerms
+            //           )
+            //       ).to.emit(tokenWizard, "RevisedFinancialTermsProposed")
+            //   })
           })
           describe("approveRevisedFinancialTerms", function () {
               const revisedTerms = [BORROW_AMOUNT, 21, 3, 4, 5, 6, [7], [8]]
@@ -520,7 +521,7 @@ const { assert, expect } = require("chai")
                           tokenWizard,
                           "TokenWizard__InvalidCallerAddress"
                       )
-                      .withArgs(deployer.address, lender.address, user.address)
+                      .withArgs(user.address)
               })
               it("reverts if there isn't pending contract revisions", async function () {
                   await tokenWizard
@@ -545,7 +546,7 @@ const { assert, expect } = require("chai")
                   await tokenWizard
                       .connect(lender)
                       .approveRevisedFinancialTerms()
-                  const value = await tokenWizard.viewContractInfo()
+                  const value = await tokenWizard.twContract()
                   assert.equal(
                       value.financialTerms.interestRate.toString(),
                       "21"
@@ -555,14 +556,15 @@ const { assert, expect } = require("chai")
                   const initVal = await await tokenWizard
                       .connect(lender)
                       .approveRevisedFinancialTerms()
-                  const [, value] = await tokenWizard.viewProposedRevisalTerms()
+                  const value = await tokenWizard.revisedFinancialTerms()
                   assert.equal(value.borrowAmount.toString(), "0")
               })
-              it("emits the ContractFinancialTermsRevised event correctly", async function () {
-                  await expect(
-                      tokenWizard.connect(lender).approveRevisedFinancialTerms()
-                  ).to.emit(tokenWizard, "ContractFinancialTermsRevised")
-              })
+              /**event is gone for now due to gas reasons... */
+            //   it("emits the ContractFinancialTermsRevised event correctly", async function () {
+            //       await expect(
+            //           tokenWizard.connect(lender).approveRevisedFinancialTerms()
+            //       ).to.emit(tokenWizard, "ContractFinancialTermsRevised")
+            //   })
           })
           describe("makePayment", function () {
               beforeEach(async function () {
@@ -592,23 +594,18 @@ const { assert, expect } = require("chai")
                           "TokenWizard__InvalidCallerAddress"
                       )
                       .withArgs(
-                          deployer.address,
-                          lender.address,
                           lender.address
                       )
               })
-              it("updates totalPaid and totalPaidThisTerm variables", async function () {
-                  const [totalPaid, totalPaidThisTerm] =
+              it("updates totalPaid variable", async function () {
+                  const totalPaid =
                       await tokenWizard.viewTotalAmountPaid()
                   await tokenWizard.makePayment({ value: ONE_ETH })
-                  const [totalPaidV2, totalPaidThisTermV2] =
+                  const totalPaidV2 =
                       await tokenWizard.viewTotalAmountPaid()
                   assert.equal(
-                      [
-                          totalPaid.add(5000000000),
-                          totalPaidThisTerm.add(5000000000),
-                      ].toString(),
-                      [totalPaidV2, totalPaidThisTermV2].toString()
+                      (totalPaid.add(5000000000)).toString(),
+                      totalPaidV2.toString()
                   )
               })
               it("updates the twContract.amountOwed variable", async function () {
@@ -646,8 +643,6 @@ const { assert, expect } = require("chai")
                           "TokenWizard__InvalidCallerAddress"
                       )
                       .withArgs(
-                          deployer.address,
-                          lender.address,
                           deployer.address
                       )
               })
@@ -682,13 +677,13 @@ const { assert, expect } = require("chai")
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
-                  const initVal = await tokenWizard.viewContractInfo()
+                  const initVal = await tokenWizard.twContract()
                   const currentTimestamp = await tokenWizard.viewTimestamp()
                   await network.provider.send("evm_mine", [
                       currentTimestamp + 600,
                   ])
                   await tokenWizard.performUpkeep("0x")
-                  const val = await tokenWizard.viewContractInfo()
+                  const val = await tokenWizard.twContract()
                   assert.equal(val.amountOwed.toString().slice(0, -7), "1250")
               })
               it("updates amountOwed with late fees if past twContract dueDate", async function () {
@@ -712,13 +707,13 @@ const { assert, expect } = require("chai")
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
-                  const initVal = await tokenWizard.viewContractInfo()
+                  const initVal = await tokenWizard.twContract()
                   const currentTimestamp = await tokenWizard.viewTimestamp()
                   await network.provider.send("evm_mine", [
                       currentTimestamp + 600,
                   ])
                   await tokenWizard.performUpkeep("0x")
-                  const finalVal = await tokenWizard.viewContractInfo()
+                  const finalVal = await tokenWizard.twContract()
                   assert.equal(finalVal.amountOwed.toString(), "15000000000")
               })
               it("updates amountOwed with late fees if past twContract dueDate and performUpkeep has been called before", async function () {
@@ -742,7 +737,7 @@ const { assert, expect } = require("chai")
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
-                  const initVal = await tokenWizard.viewContractInfo()
+                  const initVal = await tokenWizard.twContract()
                   //console.log("initVal:", (initVal.amountOwed).toString())
                   const currentTimestamp = await tokenWizard.viewTimestamp()
                   //console.log("jsscripTimeStamp:", timestamp + 1200)
@@ -757,7 +752,7 @@ const { assert, expect } = require("chai")
                       currentTimestamp + 1200,
                   ])
                   await tokenWizard.performUpkeep("0x")
-                  const finalVal = await tokenWizard.viewContractInfo()
+                  const finalVal = await tokenWizard.twContract()
                   //console.log("finalVal:", (finalVal.amountOwed).toString())
                   assert.equal(
                       finalVal.amountOwed.toString().slice(0, -7),
@@ -785,14 +780,14 @@ const { assert, expect } = require("chai")
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
-                  const initVal = await tokenWizard.viewContractInfo()
+                  const initVal = await tokenWizard.twContract()
                   //console.log("initVal", (initVal.amountOwed).toString())
                   // check solidity math, something is wrong
                   const currentTimestamp = await tokenWizard.viewTimestamp()
                   //console.log("currentTimestampp:", currentTimestamp)
                   //console.log("paymentDueDate:", initVal.financialTerms.paymentDates)
                   await tokenWizard.performUpkeep("0x")
-                  const finalVal = await tokenWizard.viewContractInfo()
+                  const finalVal = await tokenWizard.twContract()
                   //console.log("finalVal", (finalVal.amountOwed).toString())
                   assert.equal(
                       finalVal.amountOwed.toString().slice(0, -7),
@@ -821,7 +816,7 @@ const { assert, expect } = require("chai")
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
                   const initTimestamp = await tokenWizard.viewTimestamp()
-                  const dueDate = await tokenWizard.viewContractInfo()
+                  const dueDate = await tokenWizard.twContract()
                   //console.log("initTimestamp:", initTimestamp)
                   //console.log("interestPercent:", dueDate.financialTerms.interestRate)
                   //console.log("interestInterval:", dueDate.financialTerms.interestCompoundingInterval)
@@ -856,7 +851,7 @@ const { assert, expect } = require("chai")
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
                   const initTimestamp = await tokenWizard.viewTimestamp()
-                  const dueDate = await tokenWizard.viewContractInfo()
+                  const dueDate = await tokenWizard.twContract()
                   //console.log("initTimestamp:", initTimestamp)
                   //console.log("interestPercent:", dueDate.financialTerms.lateFeePercent)
                   //console.log("interestInterval:", dueDate.financialTerms.lateFeeCompoundingInterval)
@@ -864,7 +859,9 @@ const { assert, expect } = require("chai")
                   //console.log("difference:", initTimestamp - dueDate.financialTerms.dueDate)
                   await network.provider.send("evm_mine", [initTimestamp + 600])
                   await tokenWizard.performUpkeep("0x")
-                  await network.provider.send("evm_mine", [initTimestamp + 1800])
+                  await network.provider.send("evm_mine", [
+                      initTimestamp + 1800,
+                  ])
                   await expect(tokenWizard.performUpkeep("0x")).to.emit(
                       tokenWizard,
                       "LateFeeCharged"
@@ -919,7 +916,7 @@ const { assert, expect } = require("chai")
                   //console.log("oldDate:", oldDate)
                   //await network.provider.send("evm_mine", [oldDate + 1000])
                   const [bool] = await tokenWizard.checkUpkeep("0x")
-                  const contractInfo = await tokenWizard.viewContractInfo()
+                  const contractInfo = await tokenWizard.twContract()
                   //console.log("dueDate:",contractInfo.financialTerms.dueDate)
                   const date = await tokenWizard.viewTimestamp()
                   //console.log('current:', date)
@@ -1036,9 +1033,9 @@ const { assert, expect } = require("chai")
                   assert.equal(value.toString(), BORROW_AMOUNT)
               })
           })
-          describe("viewContractInfo", function () {
+          describe("twContract", function () {
               it("returns current contract information correctly", async function () {
-                  const value = await tokenWizard.viewContractInfo()
+                  const value = await tokenWizard.twContract()
                   assert.equal(
                       value.toString(),
                       [
