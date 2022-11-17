@@ -2,6 +2,7 @@ require("@nomiclabs/hardhat-ethers")
 require("@nomiclabs/hardhat-etherscan")
 require("@nomicfoundation/hardhat-chai-matchers")
 require("hardhat-deploy")
+require("hardhat-contract-sizer")
 require("dotenv").config()
 require("hardhat-gas-reporter")
 require("solidity-coverage")
@@ -10,6 +11,8 @@ require("chai")
 
 GOERLI_RPC_URL = process.env.GOERLI_RPC_URL
 PRIVATE_KEY = process.env.PRIVATE_KEY
+LENDER_PRIVATE_KEY = process.env.LENDER_PRIVATE_KEY
+USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY
 ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY
 COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY
 
@@ -26,7 +29,8 @@ module.exports = {
         },
         goerli: {
             url: GOERLI_RPC_URL || "",
-            accounts: [PRIVATE_KEY] || "key",
+            accounts:
+                [PRIVATE_KEY, LENDER_PRIVATE_KEY, USER_PRIVATE_KEY] || "key",
             chainId: 5,
             blockConfirmations: 5,
         },
@@ -37,7 +41,7 @@ module.exports = {
         user: 2,
     },
     gasReporter: {
-        enabled: true,
+        enabled: false,
         //outputFile: "gas-report.txt",
         //noColors: true,
         coinmarketcap: COINMARKETCAP_API_KEY,
@@ -46,6 +50,9 @@ module.exports = {
         //gasPrice: 21,
     },
     mocha: {
-        timeout: 40000,
+        timeout: 400000,
+    },
+    etherscan: {
+        apiKey: ETHERSCAN_API_KEY,
     },
 }
