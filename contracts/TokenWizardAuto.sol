@@ -236,19 +236,19 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
             financialTerms
         );
         priceFeed = AggregatorV3Interface(_priceFeed);
-        if (msg.sender == borrower) {
-            borrowerApproved = true;
-        } /** else if (msg.sender == lender) {
-             This was causing test to fail with massive error code, guessing its caused by function call to external contract
-            /*  @dev if lender deployed contract and passed borrowAmount to contract then sets lenderApproved = true 
-            // if (msg.value.getConversionRate(priceFeed) >= (twContract.financialTerms.borrowAmount * 1e10)) {
-            //     lenderApproved = true;
-            // } 
-        } */
+        // if (msg.sender == borrower) {
+        //     borrowerApproved = true;
+        // } /** else if (msg.sender == lender) {
+        //      This was causing test to fail with massive error code, guessing its caused by function call to external contract
+        //     /*  @dev if lender deployed contract and passed borrowAmount to contract then sets lenderApproved = true 
+        //     // if (msg.value.getConversionRate(priceFeed) >= (twContract.financialTerms.borrowAmount * 1e10)) {
+        //     //     lenderApproved = true;
+        //     // } 
+        // } */
         emit ContractDrafted(
             twContract.amountOwed,
-            twContract.borrower,
-            twContract.lender
+            borrower,
+            lender
         );
     }
 

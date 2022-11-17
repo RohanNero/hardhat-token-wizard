@@ -38,6 +38,7 @@ const { assert, expect } = require("chai")
                   [BORROW_AMOUNT, 2, 3, 2114380800, 5, 6, [7], [8]],
                   mockAggregator.address
               )
+              await tokenWizard.approveContract()
           })
           describe("constructor", function () {
               it("reverts if borrower address is same as lender address", async function () {
@@ -145,10 +146,11 @@ const { assert, expect } = require("chai")
                       ].toString()
                   )
               })
-              it("sets borrowerApproved to true if deployed by borrower", async function () {
-                  const [value] = await tokenWizard.viewApprovalStatus()
-                  assert.equal(value, true)
-              })
+              /**@dev outdated since I added contract factory to deploy instead of users directly */
+            //   it("sets borrowerApproved to true if deployed by borrower", async function () {
+            //       const [value] = await tokenWizard.viewApprovalStatus()
+            //       assert.equal(value, true)
+            //   })
               /** @dev Need to learn how to listen for events emitted inside the constructor to make this test */
               // it.only("emits contractDrafted event correctly", async function () {
               //     const factory = await ethers.getContractFactory(
@@ -674,6 +676,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -704,6 +707,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -734,6 +738,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -777,6 +782,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -812,6 +818,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -847,6 +854,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -888,6 +896,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -909,6 +918,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -931,6 +941,7 @@ const { assert, expect } = require("chai")
                       [BORROW_AMOUNT, 0, 0, timestamp + 10000, 0, 0, [0], [0]],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -955,6 +966,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   const currentTimestamp = await tokenWizard.viewTimestamp()
                   await tokenWizard
                       .connect(lender)
@@ -984,6 +996,7 @@ const { assert, expect } = require("chai")
                       ],
                       mockAggregator.address
                   )
+                  await tokenWizard.approveContract()
                   await tokenWizard
                       .connect(lender)
                       .approveContract({ value: TWO_ETH })
@@ -1017,9 +1030,6 @@ const { assert, expect } = require("chai")
               //     await network.provider.send("evm_mine", [FiveMinsInFuture + 300])
 
               //   })
-          })
-          describe("", function () {
-              it("", async function () {})
           })
           describe("viewEthToUsdPrice", function () {
               it("returns price of eth correctly", async function () {})
