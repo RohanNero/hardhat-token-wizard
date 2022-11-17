@@ -240,16 +240,12 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
         //     borrowerApproved = true;
         // } /** else if (msg.sender == lender) {
         //      This was causing test to fail with massive error code, guessing its caused by function call to external contract
-        //     /*  @dev if lender deployed contract and passed borrowAmount to contract then sets lenderApproved = true 
+        //     /*  @dev if lender deployed contract and passed borrowAmount to contract then sets lenderApproved = true
         //     // if (msg.value.getConversionRate(priceFeed) >= (twContract.financialTerms.borrowAmount * 1e10)) {
         //     //     lenderApproved = true;
-        //     // } 
+        //     // }
         // } */
-        emit ContractDrafted(
-            twContract.amountOwed,
-            borrower,
-            lender
-        );
+        emit ContractDrafted(twContract.amountOwed, borrower, lender);
     }
 
     /** @notice lender can send funds directly to the contract to approve it, and borrower can too instead of using makePayment() function */
@@ -530,7 +526,7 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
                     divideTimestamp = lastPenalizedAt;
                 }
                 // console.log("DifferenceBetween:",block.timestamp - twContract.financialTerms.dueDate);
-                // console.log("Interval:",twContract.financialTerms.lateFeeCompoundingInterval); 
+                // console.log("Interval:",twContract.financialTerms.lateFeeCompoundingInterval);
                 uint256 lateFeeCompoundsNeeded = ((block.timestamp -
                     divideTimestamp) / lateFeeCompoundingInterval);
                 for (uint256 i = 0; i < lateFeeCompoundsNeeded; i++) {

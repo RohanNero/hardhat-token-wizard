@@ -22,7 +22,7 @@ const { assert, expect } = require("chai")
         })
         describe("createTokenWizardAutoContract", function() {
             it("create a new TokenWizardAuto contract and add it to addressArray", async function() {
-                await tokenFactory.createTokenWizardAutoContract(
+                const tx = await tokenFactory.createTokenWizardAutoContract(
                     "uri",
                     deployer.address,
                     lender.address,
@@ -38,6 +38,8 @@ const { assert, expect } = require("chai")
                     ],
                     mockAggregator.address
                 )
+                //const txReceipt = await tx.wait()
+                //console.log(txReceipt.events[1].args.contractAddress)
                 const initVal = await tokenFactory.addressArray(0)
                 //console.log(initVal.toString())
                 await tokenFactory.createTokenWizardAutoContract(
