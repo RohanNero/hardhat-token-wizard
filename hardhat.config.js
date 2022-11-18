@@ -16,32 +16,49 @@ USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY
 ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY
 COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY
 
-
+/**@dev this task allows you to view price conversion of a WEI amount */
+task("ethConversion", "returns converted price of inputted WEI amount")
+    //.addParam("address", "TokenWizardAuto contract address you wish to view")
+    .addParam("wei", "amount of wei to be converted")
+    .addParam("pricefeed", "priceFeed address of chosen currency")
+    .setAction(async ({ wei, pricefeed }) => {
+        //const { abi } = require("./helper-hardhat-config.js")
+        const tokenWizardAuto = await ethers.getContract("PriceConverter")
+        const value = await tokenWizardAuto.getEthConversionRate(wei, pricefeed)
+        console.log(value.toString())
+    })
 /**@dev this task calls performUpkeep on TWA */
-task(
-    "makePayment",
-    "calls makePayment on TokenWizardAuto contract"
-)
+task("makePayment", "calls makePayment on TokenWizardAuto contract")
     .addParam("address", "TokenWizardAuto contract address you wish to view")
     .setAction(async ({ address }) => {
         const { abi } = require("./helper-hardhat-config.js")
         const tokenWizardAuto = await ethers.getContractAt(abi, address)
-        const tx = await tokenWizardAuto.makePayment({value: "100000000000000000"})
+        const tx = await tokenWizardAuto.makePayment({
+            value: "100000000000000000",
+        })
         const txReceipt = await tx.wait()
-        if(txReceipt.events[0].args.amountPaid){
-            console.log("amountPaid:",txReceipt.events[0].args.amountPaid.toString())
-            console.log("amountOwed:",txReceipt.events[0].args.amountStillOwed.toString())
-        } else if(txReceipt.events[0]){
-            console.log("totalAmountPaid:",txReceipt.events[0].args.totalAmountPaid.toString())
-            console.log("timeTaken:",txReceipt.events[0].args.timeTaken.toString())
+        if (txReceipt.events[0].args.amountPaid) {
+            console.log(
+                "amountPaid:",
+                txReceipt.events[0].args.amountPaid.toString()
+            )
+            console.log(
+                "amountOwed:",
+                txReceipt.events[0].args.amountStillOwed.toString()
+            )
+        } else if (txReceipt.events[0]) {
+            console.log(
+                "totalAmountPaid:",
+                txReceipt.events[0].args.totalAmountPaid.toString()
+            )
+            console.log(
+                "timeTaken:",
+                txReceipt.events[0].args.timeTaken.toString()
+            )
         }
-        
     })
 /**@dev this task calls performUpkeep on TWA */
-task(
-    "performUpkeep",
-    "calls performUpkeep on TokenWizardAuto contract"
-)
+task("performUpkeep", "calls performUpkeep on TokenWizardAuto contract")
     .addParam("address", "TokenWizardAuto contract address you wish to view")
     .setAction(async ({ address }) => {
         const { abi } = require("./helper-hardhat-config.js")
@@ -141,7 +158,7 @@ task(
         console.log("lenderApproved:", lenderApproved)
     })
 
-/**@dev this task approves the recent TWA contract for both borrower and lender */
+/**@dev this task approves the recent TWA contract for the borrower */
 task(
     "approveBorrower",
     "calls approveContract on TokenWizardAuto contract for borrower"
@@ -174,7 +191,7 @@ task(
         // }
     })
 
-/**@dev this task approves the recent TWA contract for both borrower and lender */
+/**@dev this task approves the recent TWA contract for the lender */
 task(
     "approveLender",
     "calls approveContract on TokenWizardAuto contract for lender"
@@ -196,7 +213,7 @@ task(
         if (1 == 1) {
             console.log("approving for lender...")
             await tokenWizardAuto.approveContract({
-                value: "1000000000000000000",
+                value: "20000000000000000",
             })
             console.log("Success!")
         } //else {
