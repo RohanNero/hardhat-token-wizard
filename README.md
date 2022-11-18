@@ -76,10 +76,13 @@ Yes, there is a handful of changes that could be made, from the `approveContract
     `yarn hardhat borrowerApprove --network goerli --address X` - `yarn hardhat lenderApprove --network goerli -address X`
 
 **4. fund chainlink automation subscription manager so it can `performUpkeep` on `contract`**
+
 *(no coding needed, just use chainlink automation's UI)*
 
 **5. wait X amount of time until interest has been added to our `twContract.amountOwed`**
 
 **6. repeat step 2. to `viewContractInfo` and see that the `amountOwed` has been updated**
+
 **7. send a transaction to contract with value that is greater than the `amountOwed` so that the `event ContractCompleted` will be emitted**
+
    *(can either send directly or via `makePayment()` function)*
