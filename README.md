@@ -1,6 +1,6 @@
 # **Tokenization Wizard**
 
-I wanted to create a platform where **any** user could potentially borrow any amount of liquidity _(currently capped at 2^32)_ by using something they own as collateral.
+I wanted to create a platform where **any** user could potentially borrow any amount of liquidity by using something they own as collateral.
 At the same time **any** user can become a lender and lend to anyone they choose to, with a list of customizable contract **`financialTerms`**.
 **The goal of this project is to create the foundation of that, in such a way that anyone may build on top of it to better fit their desired needs.**
 
@@ -20,6 +20,7 @@ Any user may call `createTokenWizardAutoContract()` inside of `TokenWizardAutoFa
     -   **`uint40 lateFeeCompoundingInterval`:** late fee compounding interval _(in seconds)_
     -   **`uint40[] paymentDates`:** array of unix timestamps representing when corresponding paymentAmounts are due
     -   **`uint[] paymentAmounts`:** array of amounts linked to paymentDates array
+-   **`address priceFeed`:** address of the price feed that will be used to calculate amount owed in chosen currency
 
 ---
 
@@ -73,7 +74,7 @@ Yes, there is a handful of changes that could be made, from the `approveContract
 
 **3. approveContract for both lender and borrower** *(making one task that took parameters proved to be a challenge, much easier to make two seperate task that have hard coded logic.)* 
 
-    `yarn hardhat borrowerApprove --network goerli --address X` - `yarn hardhat lenderApprove --network goerli -address X`
+    `yarn hardhat approveBorrower --network goerli --address X` - `yarn hardhat approveLender --network goerli -address X`
 
 **4. fund chainlink automation subscription manager so it can `performUpkeep` on `contract`**
 
