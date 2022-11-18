@@ -415,10 +415,10 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
         uint256 amountOwed = twContract.amountOwed;
         totalPaid += amountPaid;
         //totalPaidThisTerm += amountPaid;
-        if (int256(amountOwed - amountPaid) > 0) {
+        if (amountOwed > amountPaid) {
             twContract.amountOwed -= amountPaid;
             emit PaymentMade(amountPaid, twContract.amountOwed);
-        } else if (int256(amountOwed - amountPaid) <= 0) {
+        } else if (amountOwed <= amountPaid) {
             twContract.amountOwed = 0;
             emit ContractCompleted(
                 totalPaid,
