@@ -27,25 +27,6 @@ Once the **TokenWizard** contract is deployed the contract details are publicly 
 
 ---
 
-
-### ***video demo notes:***
-    - can have figma slide explaining why my project is important 
-    - stats and data to back up points will be useful; such as how many americans live paycheck to paycheck, 
-    and what average interest percents are like for traditional loans.
-    - data about what traditional loans allow as collateral and proccess needed to acquire one. (length of time, etc.)
-
-ROUGH SCRIPT: 
-hello my project for the fall 2022 chainlink hackathon is called currently called TokenWizard. The goal of my project is (project goals). 
-I think my project is important because (stats and data). I came across many problems while creating my project, some of which include:
-(first issue), (second issue), and (final issue). However now my project is deployed on goerli testnet and cannot be deleted/altered!!! 
-I wanted to create a frontend UI demo since it would be prettier and make it easier to understand, however I ran out of time :(.
-Now I will showcase interacting with my project! (video demo steps below). I still have much to work on to get it ready 
-for mainnet but this early prototype showcases the fundamentals of the project and allows you to get an idea of how it works.
-
-***can include more problems and issues that need to be worked on in the future, or can just leave it in the README.md***
-
----
-
 ## **FAQ**
 
 **How can a lender trust a borrower?**
