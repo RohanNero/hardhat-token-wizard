@@ -54,8 +54,8 @@ Yes, there is a handful of changes that could be made, from the `approveContract
 
 ---
 
-## **Hackathon video demo:**
-### **This guides you through the basic steps to create and interact with your own TokenWizardAuto contract**
+## **[Hackathon video demo:](https://youtu.be/SlG2QsCogkk)**
+#### **This guides you through the basic steps to create and interact with your own TokenWizardAuto contract**
 
 ---
 
