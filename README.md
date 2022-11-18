@@ -6,7 +6,7 @@ At the same time **any** user can become a lender and lend to anyone they choose
 
 ---
 
-Users may deploy a **TokenWizard** `contract` by passing all the contract parameters to the **`constructor`**:
+Any user may call `createTokenWizardAutoContract()` inside of `TokenWizardAutoFactory contract` by passing all the `TokenWizardAuto constructor` parameters:
  - **`string objectUri`:** URI containing name, description, and imageUri of the physical object being used as collateral
  - **`address borrower`:** address of the user borrowing liquidity by using their physical object as collateral  
  - **`address lender`:** address of the user lending their liqudity. *(receives interest if applicable)* 
@@ -24,3 +24,74 @@ Users may deploy a **TokenWizard** `contract` by passing all the contract parame
 ---
 
 Once the **TokenWizard** contract is deployed the contract details are publicly available for everyone to view. Once both parties have approved the contract by calling **`approveContract()`**, automation will start to check back in at the specified time interval and perform upkeep on the contract by updating the contract information such as the amount still owed or number of late payments. *(if the TokenWizard contract is deployed by the borrower then approveContract() is automatically called by that user, meaning only the lender will have to approve the contract)*
+
+---
+
+
+### ***video demo notes:***
+    - can have figma slide explaining why my project is important 
+    - stats and data to back up points will be useful; such as how many americans live paycheck to paycheck, 
+    and what average interest percents are like for traditional loans.
+    - data about what traditional loans allow as collateral and proccess needed to acquire one. (length of time, etc.)
+
+ROUGH SCRIPT: 
+hello my project for the fall 2022 chainlink hackathon is called currently called TokenWizard. The goal of my project is (project goals). 
+I think my project is important because (stats and data). I came across many problems while creating my project, some of which include:
+(first issue), (second issue), and (final issue). However now my project is deployed on goerli testnet and cannot be deleted/altered!!! 
+I wanted to create a frontend UI demo since it would be prettier and make it easier to understand, however I ran out of time :(.
+Now I will showcase interacting with my project! (video demo steps below). I still have much to work on to get it ready 
+for mainnet but this early prototype showcases the fundamentals of the project and allows you to get an idea of how it works.
+
+***can include more problems and issues that need to be worked on in the future, or can just leave it in the README.md***
+
+---
+
+## **FAQ**
+
+**How can a lender trust a borrower?**
+
+ trust/rep can be implemented on the frontend off-chain in a similar fashion to stackOverflow.
+
+**What if the borrower doesn't pay back the lender?**
+
+*that borrower will lose their reputation and is publically proven to be untrustworthy on-chain forever.*
+
+**How can the borrower prove they own the object in the objectURI?**
+
+*unsure on this at the current moment, maybe chainlink proof of reserves can assist with this.*
+
+**How will the frontend/UI work?**
+
+*I was thinking any team/entity that can code may develop their own frontend to interact with the TokenWizard smart contracts. 
+That way any trust/reputation and verification stuff can be handled by them. Frontends could filter users by doxxed/KYC provided or trust/rep, 
+that way lenders could choose to only provide liquidity to borrowers who fit their standards.*
+
+**Is there any updates/changes that could be made?**
+
+Yes, there is a handful of changes that could be made, from the `approveContract()` and `TokenWizardAutoFactory` flow, to the types that the contract info is saved as. Some checks to make sure that the `interestRateCompoundingInterval` and the `lateFeeCompoundingInterval` are bigger than **X** would help prevent `performUpkeep()` from failing due to gas issues. Also having a check to make sure that the length of `paymentAmounts/dates` is less than **X** can also help prevent `performUpkeep()` from failing because of gas.
+
+---
+
+## **video demo:** 
+1. call createTokenWizardAuto() with desired parameters on the factory contract. (using createTokenWizardAuto script)
+code:
+    - `yarn hardhat run scripts/TokenFactory/createTokenWizardAuto.js --network localhost`
+
+2. view newly created contract's info to see that it was deployed correctly 
+code:
+    - `yarn hardhat viewContractInfo --network goerli --address X ` (optional paramter: `--stringify X`)
+
+3. approveContract for both lender and borrower (thinking about making a task that takes `namedAccount` as input, and approvesContract)
+(also optional param that takes value ) making one task that took parameters proved to be a challenge, much easier to make two seperate task that have hard coded logic.
+code:
+    - `yarn hardhat borrowerApprove --network goerli --address X`
+    - `yarn hardhat lenderApprove --network goerli -address X`
+
+4. fund chainlink automation subscription manager so it can `performUpkeep` on `contract`
+    - no coding needed, just use chainlink automation's UI
+
+5. wait X amount of time until interest has been added to our `twContract.amountOwed`
+
+6. repeat step 2. to `viewContractInfo` and see that the `amountOwed` has been updated
+7. send a transaction to contract with value that is greater than the `amountOwed` so that the `event ContractCompleted` will be emitted
+    (can either send directly or via `makePayment()` function)
