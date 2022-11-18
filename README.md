@@ -44,9 +44,9 @@ _unsure on this at the current moment, maybe chainlink proof of reserves can ass
 
 **How will the frontend/UI work?**
 
-_I was thinking any team/entity that can code may develop their own frontend to interact with the TokenWizard smart contracts.
-That way any trust/reputation and verification stuff can be handled by them. Frontends could filter users by doxxed/KYC provided or trust/rep,
-that way lenders could choose to only provide liquidity to borrowers who fit their standards._
+_I was thinking anyone may develop their own frontend to interact with the TokenWizard smart contracts.
+That way any trust/rep and verification processes can be handled by them. Frontends could filter users by certain groups/whitelists, doxxed/KYC provided, trust/rep, etc. 
+That way lenders could choose to only provide liquidity to borrowers who fit their desired standards._
 
 **Is there any updates/changes that could be made?**
 
@@ -72,15 +72,15 @@ Yes, there is a handful of changes that could be made, from the `approveContract
 
     `yarn hardhat viewContractInfo --network goerli --address X ` *(optional paramter: `--stringify X`)*
 
-**3. approveContract for both lender and borrower** *(making one task that took parameters proved to be a challenge, much easier to make two seperate task that have hard coded logic.)* 
+**3. approveContract for both lender and borrower** *(I couldn't figure out how to parameterize a `namedAccount` so that I could reuse one hardhat task, so instead I used a simple alternative and made two seperate tasks that have hard coded logic.)* 
 
     `yarn hardhat approveBorrower --network goerli --address X` - `yarn hardhat approveLender --network goerli -address X`
 
 **4. fund chainlink automation subscription manager so it can `performUpkeep` on `contract`**
 
-*(no coding needed, just use chainlink automation's UI)*
+*( [Chainlink's Automation UI](https://automation.chain.link/))*
 
-**5. wait X amount of time until interest has been added to our `twContract.amountOwed`**
+**5. wait *X* amount of time until interest has been added to our `twContract.amountOwed`**
 
 **6. repeat step 2. to `viewContractInfo` and see that the `amountOwed` has been updated**
 
