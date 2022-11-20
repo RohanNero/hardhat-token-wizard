@@ -335,13 +335,13 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
                     (address(this).balance.getEthConversionRate(priceFeed) >=
                         borrowAmount * 1e10)
                 ) {
-                    // uint256 sendValue = amountOwed.getXConversionRate(
-                    //     priceFeed
-                    // );
-                    //console.log("amountOwed:",amountOwed);
-                    //console.log("msg.value:",msg.value);
-                    //console.log("SendValue:",sendValue);
-                    (bool sent, ) = borrower.call{value: address(this).balance}("");
+                    uint256 sendValue = amountOwed.getXConversionRate(
+                        priceFeed
+                    );
+                    /** console.log("amountOwed:",amountOwed);
+                     * console.log("msg.value:",msg.value);
+                     * console.log("SendValue:",sendValue); */
+                    (bool sent, ) = borrower.call{value: sendValue}("");
                     if (sent) {
                         lenderApproved = true;
                         startingTimestamp = uint40(block.timestamp);

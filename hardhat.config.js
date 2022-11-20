@@ -15,7 +15,14 @@ LENDER_PRIVATE_KEY = process.env.LENDER_PRIVATE_KEY
 USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY
 ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY
 COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY
+/**@dev hardhat's balance task */
+task("balance", "Prints an account's balance")
+  .addParam("account", "The account's address")
+  .setAction(async (taskArgs) => {
+    const balance = await ethers.provider.getBalance(taskArgs.account);
 
+    console.log(ethers.utils.formatEther(balance), "ETH");
+  });
 /**@dev this task allows you to view price conversion of a WEI amount */
 task("ethConversion", "returns converted price of inputted WEI amount")
     //.addParam("address", "TokenWizardAuto contract address you wish to view")
@@ -213,7 +220,7 @@ task(
         if (1 == 1) {
             console.log("approving for lender...")
             await tokenWizardAuto.approveContract({
-                value: "20000000000000000",
+                value: "200000000000000000",
             })
             console.log("Success!")
         } //else {
