@@ -1,5 +1,7 @@
 # **Tokenization Wizard**
 
+## **ERROR FOUND IN PRICECONVERTER's CODE LOGIC, TEMPORARILY FIXED WITH A WORK-AROUND. WORKING ON PERMANENT FIX NOW**
+
 I wanted to create a platform where **any** user could potentially borrow any amount of liquidity by using something they own as collateral.
 At the same time **any** user can become a lender and lend to anyone they choose to, with a list of customizable contract **`financialTerms`**.
 **The goal of this project is to create the foundation of that, in such a way that anyone may build on top of it to better fit their desired needs.**

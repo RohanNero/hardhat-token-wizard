@@ -297,7 +297,7 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
     function approveContract() public payable onlyInvolvedParties {
         uint256 borrowAmount = twContract.financialTerms.borrowAmount;
         uint256 amountOwed = twContract.amountOwed;
-        address borrower = twContract.borrower;
+        address payable borrower = twContract.borrower;
         address lender = twContract.lender;
         if (lenderApproved == true) {
             revert TokenWizard__AlreadyApprovedContract();
@@ -335,9 +335,13 @@ contract TokenWizardAuto is AutomationCompatibleInterface {
                     (address(this).balance.getEthConversionRate(priceFeed) >=
                         borrowAmount * 1e10)
                 ) {
-                    (bool sent, ) = borrower.call{
-                        value: amountOwed.getXConversionRate(priceFeed)
-                    }("");
+                    // uint256 sendValue = amountOwed.getXConversionRate(
+                    //     priceFeed
+                    // );
+                    //console.log("amountOwed:",amountOwed);
+                    //console.log("msg.value:",msg.value);
+                    //console.log("SendValue:",sendValue);
+                    (bool sent, ) = borrower.call{value: address(this).balance}("");
                     if (sent) {
                         lenderApproved = true;
                         startingTimestamp = uint40(block.timestamp);
